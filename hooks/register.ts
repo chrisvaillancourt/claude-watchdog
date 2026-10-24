@@ -184,7 +184,7 @@ async function review(
   const usage: ModelUsage | undefined = 'usage' in result ? result.usage : undefined
   const logBase = { kind: 'review', turnId: forTurnId, model: config.model, ...usageStats(usage), items: items.length }
 
-  let s = await read($, sessionAtom)
+  const s = await read($, sessionAtom)
   if (!isCurrent(s, runId, generation)) {
     await appendLog($, { ...logBase, outcome: 'discarded' })
     log($, 'a review finished after watchdog was turned off or the conversation cleared; discarded')
@@ -206,7 +206,7 @@ async function review(
     return
   }
   const admitted = admit(notes, s.seen, config.maxNotes)
-  s = await update($, sessionAtom, cur => ({
+  await update($, sessionAtom, cur => ({
     ...consume(addStats(cur, { reviews: 1, dropped: admitted.dropped, ...usageStats(usage) }), upTo),
     seen: admitted.seen,
   }))
@@ -217,14 +217,25 @@ async function review(
   }
 
   const interactive = isInteractive && !inline
-  const d = decideDelivery(s, forTurnId, admitted.kept, config, interactive)
+  // Decide from the facts right before delivering: /watchdog off, /clear or a
+  // newer turn may have landed while the admission write was in flight.
+  const fresh = await read($, sessionAtom)
+  if (!isCurrent(fresh, runId, generation)) {
+    await appendLog($, { ...logBase, outcome: 'discarded', notes: admitted.kept })
+    log($, 'a review was discarded before delivery: watchdog was turned off or the conversation cleared')
+    return
+  }
+  const d = decideDelivery(fresh, forTurnId, admitted.kept, config, interactive)
   if (d.toModel.length > 0 && !(await appendRow($, 'user', modelNoteText(d.toModel)))) {
     // The model couldn't be told: show the person instead, so nothing is lost silently.
     d.toPerson.push(...d.toModel)
     d.toModel = []
     d.wake = false
   }
-  if (d.toPerson.length > 0) await showPerson($, d.toPerson, d.late)
+  if (d.toPerson.length > 0) {
+    if (isCurrent(await read($, sessionAtom), runId, generation)) await showPerson($, d.toPerson, d.late)
+    else log($, 'a review was turned off before its notice could be shown')
+  }
   await update($, sessionAtom, cur => addStats(cur, { toModel: d.toModel.length, toPerson: d.toPerson.length, late: d.late ? d.toPerson.length : 0 }))
 
   let woke = false
