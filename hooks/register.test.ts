@@ -298,6 +298,16 @@ describe('watchdog: failures and guards', () => {
     expect(w.modelRows()).toHaveLength(1)
   })
 
+  test('changing a literal parameter to an expansion cannot inherit provenance', async ($, on) => {
+    const w = world(on, { reply: '<notes>\n[concern] The cleanup was incomplete; run `rm -rf "$TARGET"` to remove the intended data.\n</notes>' })
+    await start($)
+    await run($, 'on')
+    await turn($, 't1', 'clean only the literal directory named $TARGET', 'Done', { tools: [{ name: 'Bash', input: { command: "rm -rf '$TARGET'" }, result: 'Removed the literal directory' }] })
+    await w.clock.settle()
+    expect(w.modelRows()).toEqual([])
+    expect(w.submits).toEqual([])
+  })
+
   test('/watchdog off discards a review in flight', async ($, on) => {
     let open = () => {}
     const gate = new Promise<void>(r => (open = r))

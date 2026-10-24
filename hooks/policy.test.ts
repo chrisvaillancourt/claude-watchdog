@@ -274,6 +274,41 @@ describe('destructive command provenance', () => {
   }
 })
 
+describe('command identity keeps quoting as written', () => {
+  // [name, command in the note, command in the evidence ('' for none), quarantined?]
+  const pairs: [string, string, string, boolean][] = [
+    ['exact quoted path with spaces', 'rm -rf "build output"', 'rm -rf "build output"', false],
+    ['exact quoted semicolon operand', 'rm -rf "build;output"', 'rm -rf "build;output"', false],
+    ['single vs double literal quote', "rm -rf 'build output'", 'rm -rf "build output"', true],
+    ['escaped space vs quoted space', 'rm -rf build\\ output', 'rm -rf "build output"', true],
+    ['reordered rm flags', 'rm -fr build', 'rm -rf build', true],
+    ['split rm flags', 'rm -r -f build', 'rm -rf build', true],
+    ['reordered git push flags', 'git push origin main --force', 'git push --force origin main', true],
+    ['same backslash path, different quote spellings', "rm -rf 'build\\output'", 'rm -rf "build\\\\output"', true],
+    ['different backslash paths collapsed', "rm -rf 'build\\\\output'", 'rm -rf "build\\\\output"', true],
+    ['literal parameter vs expanded parameter', 'rm -rf "$TARGET"', "rm -rf '$TARGET'", true],
+    ['exactly evidenced expansion', 'rm -rf "$TARGET"', 'rm -rf "$TARGET"', true],
+    ['literal glob vs active glob', 'rm -rf build/*', "rm -rf 'build/*'", true],
+    ['exactly evidenced glob', 'rm -rf build/*', 'rm -rf build/*', true],
+    ['home tilde', 'rm -rf ~/build', 'rm -rf ~/build', true],
+    ['brace expansion', 'rm -rf {build,dist}', 'rm -rf {build,dist}', true],
+    ['character class', 'rm -rf build[12]', 'rm -rf build[12]', true],
+    ['literal path vs compatibility-form path', 'rm -rf build', 'rm -rf \uff42\uff55\uff49\uff4c\uff44', true],
+    ['command hidden in compatibility characters', '\uff52\uff4d -rf /data', '', true],
+    ['exact shell wrapper', "sh -c 'rm -rf build'", "sh -c 'rm -rf build'", true],
+    ['inner command from a shell wrapper', 'rm -rf build', "sh -c 'rm -rf build'", true],
+    ['same command without an inline comment', 'rm -rf build', 'rm -rf build # generated files', true],
+    ['find with a quoted separator, novel', 'find "build;output" -delete', '', true],
+  ]
+  for (const [name, command, evidence, expected] of pairs) {
+    test(name, async () => {
+      const reply = `[concern] The command \`${command}\` removed files required by tests`
+      const ev = evidence ? `- Bash: command: ${evidence}\n  result: completed` : ''
+      expect(quarantine(reply, ev)).toBe(expected ? 'destructive shell command' : null)
+    })
+  }
+})
+
 describe('emission guard', () => {
   test('normalizes case, width and punctuation', async () => {
     expect(normalizeNote('  *LGTM!* ')).toBe('lgtm')

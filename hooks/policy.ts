@@ -399,7 +399,8 @@ const OVERRIDES: readonly RegExp[] = [
 ]
 
 /** Characters a directive's head may look ahead over: not past a backtick, newline or shell separator. */
-const SAME = String.raw`[^\n` + '`' + String.raw`;|&]*`
+/** What a directive's head may look ahead over: not past a backtick or newline (quotes can hide separators). */
+const SAME = String.raw`[^\n` + '`' + String.raw`]*`
 
 /** Where a destructive directive starts; `extent` reads it from there to its end. */
 const DESTRUCTIVE: readonly RegExp[] = [
@@ -413,50 +414,55 @@ const DESTRUCTIVE: readonly RegExp[] = [
   String.raw`\bdrop\s+(?:table|database|schema)\b`,
 ].map(head => new RegExp(head, 'gi'))
 
-/** A directive's words with quotes removed, or null when its extent can't be told (so it is never vouched for). */
+/** Characters that make the shell expand a word: a directive holding any never gets a provenance exemption. */
+const EXPANSIVE = new Set(['$', '*', '?', '[', '~', '{'])
+
+/**
+ * A directive's words exactly as written, quotes and escapes included (the
+ * identity provenance compares), or null when it can't be vouched for: its
+ * end can't be told (an unbalanced quote, a line continuation, `<(…)`, a
+ * heredoc, a backtick inside quotes) or it holds expansion or glob syntax.
+ */
 function extent(text: string, start: number): string[] | null {
   const words: string[] = []
   let word = ''
-  let inWord = false
   let quote: string | null = null
   for (let i = start; i < text.length; i++) {
     const c = text[i] as string
     const n = text[i + 1]
+    if (EXPANSIVE.has(c)) return null
     if (quote) {
+      if (c === '`' || c === '\n') return null
+      word += c
       if (c === quote) quote = null
-      else if (c === '`' || c === '\n' || (quote === '"' && c === '$' && n === '(')) return null
-      else word += c
       continue
     }
     if (c === "'" || c === '"') {
       quote = c
-      inWord = true
+      word += c
       continue
     }
     if (c === '\\') {
       if (n === '\n' || n === undefined) return null // a line continuation hides the rest
-      word += n
-      inWord = true
+      word += c + n
       i++
       continue
     }
     if (c === '`' || c === '\n' || c === ';' || c === '|' || c === '&') break
-    if (((c === '$' || c === '<' || c === '>') && n === '(') || (c === '<' && n === '<')) return null
+    if (((c === '<' || c === '>') && n === '(') || (c === '<' && n === '<')) return null
     if (/\s/.test(c)) {
-      if (inWord) words.push(word)
+      if (word) words.push(word)
       word = ''
-      inWord = false
       continue
     }
     word += c
-    inWord = true
   }
   if (quote) return null
-  if (inWord) words.push(word)
+  if (word) words.push(word)
   return words
 }
 
-/** Every destructive directive in a text, by its words; null for one whose extent is ambiguous. */
+/** Every destructive directive in a text, by its words; null for one that can't be vouched for. */
 function directives(text: string): (string[] | null)[] {
   return DESTRUCTIVE.flatMap(r => [...text.matchAll(r)].map(m => extent(text, m.index ?? 0)))
 }
@@ -466,15 +472,19 @@ function directives(text: string): (string[] | null)[] {
  * before parsing or truncation, fences and text outside the block included.
  * Any instruction override quarantines it. So does every destructive
  * directive, each on its own, unless the reviewed evidence holds the same
- * whole command word for word (the note is quoting what the agent ran). A
- * directive whose extent can't be told (an unbalanced quote, a line
- * continuation, `$(…)`, a heredoc) is never vouched for.
+ * command spelled the same way, word for word with its quotes and escapes
+ * (the note is quoting what the agent ran). Commands are compared as
+ * written, never normalized: a directive that only appears once compatibility
+ * characters are folded quarantines too. One that can't be vouched for (see
+ * `extent`) always quarantines, evidenced or not.
  */
 export function quarantine(reply: string, evidence: string): string | null {
-  const text = reply.normalize('NFKC')
-  if (OVERRIDES.some(r => r.test(text))) return 'instruction override'
-  const known = new Set(directives(evidence.normalize('NFKC')).flatMap(d => (d ? [d.join('\u0000')] : [])))
-  for (const d of directives(text)) {
+  const folded = reply.normalize('NFKC')
+  if (OVERRIDES.some(r => r.test(folded))) return 'instruction override'
+  const found = directives(reply)
+  if (directives(folded).length > found.length) return 'destructive shell command'
+  const known = new Set(directives(evidence).flatMap(d => (d ? [d.join('\u0000')] : [])))
+  for (const d of found) {
     if (d === null || !known.has(d.join('\u0000'))) return 'destructive shell command'
   }
   return null
