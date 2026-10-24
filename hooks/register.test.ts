@@ -288,6 +288,15 @@ describe('watchdog: failures and guards', () => {
     expect((await run($, 'status')).text).toContain('1 quarantined')
   })
 
+  test('a note quoting a destructive command the agent ran is delivered', async ($, on) => {
+    const w = world(on, { reply: '<notes>\n[concern] `rm -rf build` ran before the tests that needed it\n</notes>' })
+    await start($)
+    await run($, 'on')
+    await turn($, 't1', 'clean and test', 'Done', { tools: [{ name: 'Bash', input: { command: 'rm -rf build' }, result: '' }] })
+    await w.clock.settle()
+    expect(w.modelRows()).toHaveLength(1)
+  })
+
   test('/watchdog off discards a review in flight', async ($, on) => {
     let open = () => {}
     const gate = new Promise<void>(r => (open = r))

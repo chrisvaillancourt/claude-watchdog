@@ -239,7 +239,8 @@ function render(e: Evidence): string {
       return `## Final answer\n${e.text}`
     case 'tool': {
       const result = e.result === undefined ? '  (no result recorded)' : `  ${e.isError ? 'error' : 'result'}: ${e.result}`
-      return `- ${e.tool}(${e.input})\n${result}`
+      // The input ends its line, so a command in it reads to its own end (see `extent`).
+      return `- ${e.tool}: ${e.input}\n${result}`
     }
   }
 }
@@ -377,42 +378,84 @@ const OVERRIDES: readonly RegExp[] = [
   /\bnew\s+system\s+prompt\b/i,
 ]
 
-/** The rest of one shell directive: up to a quote, a backtick, a newline or a shell separator. */
-const REST = String.raw`[^\n` + '`' + String.raw`'";|&]*`
-const WORD = String.raw`[^\s` + '`' + String.raw`'";|&]+`
+/** Characters a directive's head may look ahead over: not past a backtick, newline or shell separator. */
+const SAME = String.raw`[^\n` + '`' + String.raw`;|&]*`
 
-/** Destructive directive heads; each match runs on to the end of its directive. */
+/** Where a destructive directive starts; `extent` reads it from there to its end. */
 const DESTRUCTIVE: readonly RegExp[] = [
-  String.raw`\brm\s+(?=(?:-[a-z]+\s*)*-[a-z]*r[a-z]*)(?=(?:-[a-z]+\s*)*-[a-z]*f[a-z]*)(?:-[a-z]+\s*)+`,
+  String.raw`\brm\s+(?=(?:-[a-z]+\s*)*-[a-z]*r[a-z]*)(?=(?:-[a-z]+\s*)*-[a-z]*f[a-z]*)-`,
   String.raw`\bgit\s+reset\s+--hard\b`,
-  String.raw`\bgit\s+push\s+(?:${WORD}\s+)*?(?:--force(?:-with-lease)?|-f)\b`,
+  String.raw`\bgit\s+push\b(?=${SAME}\s(?:--force(?:-with-lease)?|-f)\b)`,
   String.raw`\bgit\s+clean\s+-[a-z]*f`,
   String.raw`\bmkfs(?:\.\w+)?\b`,
-  String.raw`\bdd\s+(?:${WORD}\s+)*?of=\/dev\/`,
+  String.raw`\bdd\b(?=${SAME}\bof=\/dev\/)`,
+  String.raw`\bfind\b(?=${SAME}\s-delete\b)`,
   String.raw`\bdrop\s+(?:table|database|schema)\b`,
-].map(head => new RegExp(head + REST, 'gi'))
+].map(head => new RegExp(head, 'gi'))
 
-function directive(text: string): string {
-  return text.replace(/[`'"(),.;:\]]+$/, '').replace(/\s+/g, ' ').trim().toLowerCase()
+/** A directive's words with quotes removed, or null when its extent can't be told (so it is never vouched for). */
+function extent(text: string, start: number): string[] | null {
+  const words: string[] = []
+  let word = ''
+  let inWord = false
+  let quote: string | null = null
+  for (let i = start; i < text.length; i++) {
+    const c = text[i] as string
+    const n = text[i + 1]
+    if (quote) {
+      if (c === quote) quote = null
+      else if (c === '`' || c === '\n' || (quote === '"' && c === '$' && n === '(')) return null
+      else word += c
+      continue
+    }
+    if (c === "'" || c === '"') {
+      quote = c
+      inWord = true
+      continue
+    }
+    if (c === '\\') {
+      if (n === '\n' || n === undefined) return null // a line continuation hides the rest
+      word += n
+      inWord = true
+      i++
+      continue
+    }
+    if (c === '`' || c === '\n' || c === ';' || c === '|' || c === '&') break
+    if (((c === '$' || c === '<' || c === '>') && n === '(') || (c === '<' && n === '<')) return null
+    if (/\s/.test(c)) {
+      if (inWord) words.push(word)
+      word = ''
+      inWord = false
+      continue
+    }
+    word += c
+    inWord = true
+  }
+  if (quote) return null
+  if (inWord) words.push(word)
+  return words
+}
+
+/** Every destructive directive in a text, by its words; null for one whose extent is ambiguous. */
+function directives(text: string): (string[] | null)[] {
+  return DESTRUCTIVE.flatMap(r => [...text.matchAll(r)].map(m => extent(text, m.index ?? 0)))
 }
 
 /**
  * Why a whole reply must be dropped, or null: read over the raw reply,
  * before parsing or truncation, fences and text outside the block included.
- * Any instruction override
- * quarantines it. Every destructive directive, each checked on its own,
- * quarantines it unless the reviewed evidence holds that same complete
- * directive (the note is quoting what the agent ran): one quoted command
- * never vouches for another of its kind.
+ * Any instruction override quarantines it. So does every destructive
+ * directive, each on its own, unless the reviewed evidence holds the same
+ * whole command word for word (the note is quoting what the agent ran). A
+ * directive whose extent can't be told (an unbalanced quote, a line
+ * continuation, `$(…)`, a heredoc) is never vouched for.
  */
 export function quarantine(reply: string, evidence: string): string | null {
   const text = reply.normalize('NFKC')
   if (OVERRIDES.some(r => r.test(text))) return 'instruction override'
-  const source = evidence.replace(/\s+/g, ' ').toLowerCase()
-  for (const r of DESTRUCTIVE) {
-    for (const m of text.matchAll(r)) {
-      if (!source.includes(directive(m[0]))) return 'destructive shell command'
-    }
+  const known = new Set(directives(evidence.normalize('NFKC')).flatMap(d => (d ? [d.join('\u0000')] : [])))
+  for (const d of directives(text)) {
+    if (d === null || !known.has(d.join('\u0000'))) return 'destructive shell command'
   }
   return null
 }

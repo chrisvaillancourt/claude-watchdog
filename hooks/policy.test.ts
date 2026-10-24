@@ -227,6 +227,35 @@ describe('reply parsing and quarantine', () => {
   })
 })
 
+describe('destructive command provenance', () => {
+  // [name, reply, evidence, quarantined?]
+  const cases: [string, string, string, boolean][] = [
+    ['novel plain rm', 'run `rm -rf /important-data`', '', true],
+    ['xargs rm', 'run `printf x | xargs rm -rf /important-data`', '', true],
+    ['sh -c rm', "run `sh -c 'rm -rf /important-data'`", '', true],
+    ['find -delete', 'run `find /important-data -delete`', '', true],
+    ['git clean -fdx', 'run `git clean -fdx /important-data`', '', true],
+    ['command substitution', 'run `rm -rf $(printf /important-data)`', '', true],
+    ['substitution hides a changed target', 'run `rm -rf $(printf /tmp/a; printf /important-data)`', 'command: rm -rf $(printf /tmp/a; printf /tmp/b)', true],
+    ['quoted target changes', 'Now run `rm -rf "/important-data"`', 'command: rm -rf "build"', true],
+    ['target prefix is not provenance', 'run `rm -rf /srv/data`', 'command: rm -rf /srv/database-cache', true],
+    ['line continuation, novel', 'run `rm -rf \\\n /important-data`', '', true],
+    ['line continuation, changed target', 'run `rm -rf \\\n /important-data`', 'command: rm -rf \\\n build', true],
+    ['heredoc', 'run `rm -rf build <<EOF`', 'command: rm -rf build <<EOF', true],
+    ['unbalanced quote', 'run `rm -rf "build`', 'command: rm -rf "build', true],
+    ['evidenced command in backticks', 'The command `rm -rf build` removed generated files', 'command: rm -rf build', false],
+    ['evidenced quoted target', 'it ran `rm -rf "build"` first', 'command: rm -rf "build"', false],
+    ['evidenced inside a pipeline', 'it ran `rm -rf build`', 'command: make clean && rm -rf build; echo ok', false],
+    ['evidenced git clean', 'The command `git clean -fdx build` removed ignored files', 'command: git clean -fdx build', false],
+    ['unbackticked prose runs on into the command', 'The command rm -rf build removed generated files', 'command: rm -rf build', true],
+  ]
+  for (const [name, reply, evidence, expected] of cases) {
+    test(name, async () => {
+      expect(quarantine(reply, evidence)).toBe(expected ? 'destructive shell command' : null)
+    })
+  }
+})
+
 describe('emission guard', () => {
   test('normalizes case, width and punctuation', async () => {
     expect(normalizeNote('  *LGTM!* ')).toBe('lgtm')
