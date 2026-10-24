@@ -188,7 +188,7 @@ describe('watchdog: delivery', () => {
     await w.clock.settle()
     expect(w.modelRows()).toHaveLength(1)
     expect(w.textOf(w.modelRows()[0]!)).toContain('[concern] add() returns a - b')
-    expect(w.textOf(w.modelRows()[0]!)).toContain('Watchdog notes on your answer to: "write add()"')
+    expect(w.textOf(w.modelRows()[0]!)).toContain('Watchdog reviewed work through your request: "write add()"')
     expect(w.submits).toEqual([WAKE_TEXT])
     const status = await run($, 'status')
     expect(status.text).toContain('1 reviews (0 incomplete)')

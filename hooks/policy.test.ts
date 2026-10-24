@@ -359,10 +359,11 @@ describe('emission guard', () => {
 describe('note text', () => {
   test('the model row names the request it reviewed, cut to about 80 characters', async () => {
     const notes: Note[] = [{ severity: 'concern', text: 'c' }]
-    expect(modelNoteText(notes, 'fix the\nparser')).toContain('Watchdog notes on your answer to: "fix the parser"')
+    expect(modelNoteText(notes, 'fix the\nparser')).toContain('Watchdog reviewed work through your request: "fix the parser"')
+    expect(modelNoteText(notes, 'x')).not.toContain('that turn')
     const long = modelNoteText(notes, 'x'.repeat(200))
     expect(long).toContain(`"${'x'.repeat(80)}…"`)
-    expect(modelNoteText(notes, null)).toContain('Watchdog notes on your recent work')
+    expect(modelNoteText(notes, null)).toContain('Watchdog reviewed your recent work')
   })
 })
 
