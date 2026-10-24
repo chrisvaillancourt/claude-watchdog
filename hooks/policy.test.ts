@@ -158,6 +158,24 @@ describe('delta ceiling', () => {
     expect(d).toContain('omitted')
   })
 
+  test('the smallest budget keeps the newest request beside a long answer, in order', async () => {
+    const ev: Evidence[] = [
+      { kind: 'prompt', text: 'older ask' },
+      { kind: 'answer', text: 'older answer' },
+      { kind: 'prompt', text: 'Implement a correct add function; never delete files.' },
+      { kind: 'answer', text: 'answer-body '.repeat(500) },
+    ]
+    const d = buildDelta(ev, 2000)
+    expect(d.length).toBeLessThanOrEqual(2000)
+    expect(d).toContain('Implement a correct add function')
+    expect(d).toContain('## Final answer\nanswer-body')
+    expect(d.indexOf('Implement a correct')).toBeLessThan(d.indexOf('answer-body'))
+    const long = buildDelta([{ kind: 'prompt', text: 'q'.repeat(4000) }, { kind: 'answer', text: 'a'.repeat(6000) }], 2000)
+    expect(long.length).toBeLessThanOrEqual(2000)
+    expect(long).toContain('qqqq')
+    expect(long).toContain('aaaa')
+  })
+
   test('the smallest budget still holds when one answer is bigger than it', async () => {
     const d = buildDelta([{ kind: 'prompt', text: 'ask' }, { kind: 'answer', text: 'z'.repeat(6000) }], 2000)
     expect(d.length).toBeLessThanOrEqual(2000)

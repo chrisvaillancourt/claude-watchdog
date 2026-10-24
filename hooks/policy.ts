@@ -268,34 +268,54 @@ function assemble(parts: readonly Part[]): string {
 
 /**
  * The compact delta, never longer than `maxChars` (markers included).
- * Prompts, answers and markers come first, newest first, then the newest
- * tool calls that fit; the newest prompt and answer are cut to fit rather
- * than dropped. Older items are omitted with a marker saying how many.
+ * The newest prompt and answer are reserved together first (cut to share
+ * the room when both don't fit); then older prompts, answers and markers,
+ * newest first, then the newest tool calls that fit. Older items are
+ * omitted with a marker saying how many; the output stays in order.
  */
 export function buildDelta(ev: readonly Evidence[], maxChars: number): string {
   const parts: Part[] = ev.map(e => ({ e, text: render(e), keep: false }))
   const idx = parts.map((_, i) => i).reverse()
   const order = [...idx.filter(i => parts[i]?.e.kind !== 'tool'), ...idx.filter(i => parts[i]?.e.kind === 'tool')]
   let budget = maxChars - 120 // room for omission markers
+  // Reserve the newest request and the newest answer together first, cutting both to share the room if need be.
+  const newest = (['prompt', 'answer'] as const).flatMap(k => {
+    const p = parts.findLast(x => x.e.kind === k)
+    return p ? [p] : []
+  })
+  const want = newest.reduce((n, p) => n + p.text.length + 1, 0)
+  if (want > budget) {
+    // The shorter keeps up to half the room, the longer takes what is left; 30 chars cover a cut marker.
+    const [small, large] = [...newest].sort((x, y) => x.text.length - y.text.length)
+    const smallRoom = large ? Math.min(small!.text.length + 1, Math.floor(budget / 2)) : 0
+    if (small && large && small.text.length + 1 > smallRoom) small.text = cut(small.text, smallRoom - 30)
+    const target = large ?? small
+    if (target) target.text = cut(target.text, Math.max(0, budget - (large ? small!.text.length + 1 : 0) - 31))
+  }
+  for (const p of newest) {
+    p.keep = true
+    budget -= p.text.length + 1
+  }
   for (const i of order) {
     const p = parts[i]
-    if (!p) continue
+    if (!p || p.keep) continue
     const need = p.text.length + 1
     if (need <= budget) {
       p.keep = true
       budget -= need
-    } else if ((p.e.kind === 'prompt' || p.e.kind === 'answer') && budget >= 300 && !parts.some(q => q.keep && q.e.kind === p.e.kind)) {
-      p.text = cut(p.text, budget - 40)
-      p.keep = true
-      budget -= p.text.length + 1
     }
   }
   let out = assemble(parts)
   // Markers between many separated runs can still overflow: drop the oldest kept item until it fits.
   while (out.length > maxChars) {
-    const oldest = parts.find(p => p.keep)
-    if (!oldest || parts.filter(p => p.keep).length === 1) return out.slice(0, maxChars)
-    oldest.keep = false
+    const oldest = parts.find(p => p.keep && !newest.includes(p))
+    if (oldest) oldest.keep = false
+    else {
+      // Only the reserved pair is left: trim the longer of them by the overshoot.
+      const longer = [...newest].sort((x, y) => y.text.length - x.text.length)[0]
+      if (!longer || longer.text.length < 60) return out.slice(0, maxChars)
+      longer.text = cut(longer.text, Math.max(0, longer.text.length - (out.length - maxChars) - 40))
+    }
     out = assemble(parts)
   }
   return out
