@@ -10,6 +10,7 @@ import {
   evidenceFromRow,
   isActive,
   joinGuidance,
+  modelNoteText,
   normalizeNote,
   parseArgs,
   parseReply,
@@ -267,6 +268,16 @@ describe('emission guard', () => {
     const r = admit([{ severity: 'blocker', text: 'off by one in loop' }], [{ key: 'off by one in loop', severity: 'concern' }], 4)
     expect(r.kept).toHaveLength(1)
     expect(r.seen.find(s => s.key === 'off by one in loop')?.severity).toBe('blocker')
+  })
+})
+
+describe('note text', () => {
+  test('the model row names the request it reviewed, cut to about 80 characters', async () => {
+    const notes: Note[] = [{ severity: 'concern', text: 'c' }]
+    expect(modelNoteText(notes, 'fix the\nparser')).toContain('Watchdog notes on your answer to: "fix the parser"')
+    const long = modelNoteText(notes, 'x'.repeat(200))
+    expect(long).toContain(`"${'x'.repeat(80)}…"`)
+    expect(modelNoteText(notes, null)).toContain('Watchdog notes on your recent work')
   })
 })
 

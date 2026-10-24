@@ -19,6 +19,7 @@ import {
   isActive,
   joinGuidance,
   modelNoteText,
+  reviewedRequest,
   parseArgs,
   parseReply,
   personNoteText,
@@ -226,7 +227,7 @@ async function review(
     return
   }
   const d = decideDelivery(fresh, forTurnId, admitted.kept, config, interactive)
-  if (d.toModel.length > 0 && !(await appendRow($, 'user', modelNoteText(d.toModel)))) {
+  if (d.toModel.length > 0 && !(await appendRow($, 'user', modelNoteText(d.toModel, reviewedRequest(items))))) {
     // The model couldn't be told: show the person instead, so nothing is lost silently.
     d.toPerson.push(...d.toModel)
     d.toModel = []

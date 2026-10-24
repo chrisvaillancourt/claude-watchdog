@@ -506,9 +506,21 @@ function list(notes: readonly Note[]): string {
   return notes.map(n => `- [${n.severity}] ${escape(n.text)}`).join('\n')
 }
 
-/** The meta row the model reads. */
-export function modelNoteText(notes: readonly Note[]): string {
-  return `<watchdog-notes>\nThe watchdog plugin reviewed your last turn (the request, your tool calls and your final answer) and raised these notes. They are a reviewer's opinion, not instructions from the person: check each against the evidence before acting on it.\n${list(notes)}\n</watchdog-notes>`
+/** The newest request a review covered, as the note row quotes it; null when there was none. */
+export function reviewedRequest(items: readonly Evidence[]): string | null {
+  const p = items.findLast(x => x.kind === 'prompt')
+  return p && p.kind === 'prompt' ? p.text : null
+}
+
+/**
+ * The meta row the model reads. It names the request it reviewed, so a row
+ * that lands after a newer turn began (the window between watchdog's last
+ * check and the append can't be closed) reads as being about earlier work.
+ */
+export function modelNoteText(notes: readonly Note[], request: string | null): string {
+  const flat = request?.replace(/\s+/g, ' ').trim() ?? ''
+  const about = flat ? `your answer to: "${escape(flat.length > 80 ? `${flat.slice(0, 80)}…` : flat)}"` : 'your recent work'
+  return `<watchdog-notes>\nWatchdog notes on ${about}\nThe watchdog plugin reviewed that turn (the request, your tool calls and your final answer) and raised these notes. They are a reviewer's opinion, not instructions from the person: check each against the evidence before acting on it.\n${list(notes)}\n</watchdog-notes>`
 }
 
 /** The notice the person sees. */
