@@ -279,6 +279,9 @@ describe('command identity keeps quoting as written', () => {
   const pairs: [string, string, string, boolean][] = [
     ['exact quoted path with spaces', 'rm -rf "build output"', 'rm -rf "build output"', false],
     ['exact quoted semicolon operand', 'rm -rf "build;output"', 'rm -rf "build;output"', false],
+    ['exact escaped double quote', 'rm -rf "build\\"output"', 'rm -rf "build\\"output"', false],
+    ['exact escaped backslash in double quotes', 'rm -rf "build\\\\"', 'rm -rf "build\\\\"', false],
+    ['escaped quote, different spelling', 'rm -rf build\\"output', 'rm -rf "build\\"output"', true],
     ['single vs double literal quote', "rm -rf 'build output'", 'rm -rf "build output"', true],
     ['escaped space vs quoted space', 'rm -rf build\\ output', 'rm -rf "build output"', true],
     ['reordered rm flags', 'rm -fr build', 'rm -rf build', true],

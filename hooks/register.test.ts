@@ -308,6 +308,16 @@ describe('watchdog: failures and guards', () => {
     expect(w.submits).toEqual([])
   })
 
+  test('an exactly evidenced command with an escaped double quote keeps its note', async ($, on) => {
+    const command = 'rm -rf "build\\"output"'
+    const w = world(on, { reply: `<notes>\n[concern] \`${command}\` removed the fixture directory before tests needed it.\n</notes>` })
+    await start($)
+    await run($, 'on')
+    await turn($, 't1', 'remove the fixture directory and then test', 'Done', { tools: [{ name: 'Bash', input: { command }, result: 'Removed the fixture directory' }] })
+    await w.clock.settle()
+    expect(w.modelRows()).toHaveLength(1)
+  })
+
   test('/watchdog off discards a review in flight', async ($, on) => {
     let open = () => {}
     const gate = new Promise<void>(r => (open = r))

@@ -433,6 +433,12 @@ function extent(text: string, start: number): string[] | null {
     if (EXPANSIVE.has(c)) return null
     if (quote) {
       if (c === '`' || c === '\n') return null
+      // Inside double quotes `\"` and `\\` are escapes; any other backslash is literal there.
+      if (quote === '"' && c === '\\' && (n === '"' || n === '\\')) {
+        word += c + n
+        i++
+        continue
+      }
       word += c
       if (c === quote) quote = null
       continue
