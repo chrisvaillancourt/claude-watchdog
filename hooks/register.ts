@@ -194,7 +194,7 @@ async function review(
   if (notes === null) {
     const reason = result.isAnswered ? 'the reply had no <notes> block' : result.reason
     await update($, sessionAtom, cur => ({ ...addStats(cur, { reviews: 1, incomplete: 1, ...usageStats(usage) }), lastOutcome: `incomplete (${reason}); the evidence is kept for the next review.` }))
-    await appendLog($, { ...logBase, outcome: 'incomplete', reason })
+    await appendLog($, { ...logBase, outcome: 'incomplete', reason, ...(result.isAnswered ? { reply: result.text.slice(0, 2000) } : {}) })
     log($, `review incomplete: ${reason}`)
     return
   }
@@ -212,7 +212,7 @@ async function review(
   }))
   if (admitted.kept.length === 0) {
     await update($, sessionAtom, cur => ({ ...cur, lastOutcome: `no notes (${admitted.dropped} dropped by the guard).` }))
-    await appendLog($, { ...logBase, outcome: 'quiet', kept: 0, dropped: admitted.dropped })
+    await appendLog($, { ...logBase, outcome: 'quiet', kept: 0, dropped: admitted.dropped, ...(result.isAnswered ? { reply: result.text.slice(0, 2000) } : {}) })
     return
   }
 

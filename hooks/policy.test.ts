@@ -165,6 +165,19 @@ describe('reply parsing and quarantine', () => {
     ])
   })
 
+  test('accepts common severity spellings and joins continuation lines', async () => {
+    expect(parseReply('<notes>\nconcern: x is wrong\n**Blocker**: y is broken\n- (nit) z\n</notes>')).toEqual([
+      { severity: 'concern', text: 'x is wrong' },
+      { severity: 'blocker', text: 'y is broken' },
+      { severity: 'nit', text: 'z' },
+    ])
+    expect(parseReply('<notes>\n[concern] first line\n  second line\n</notes>')).toEqual([{ severity: 'concern', text: 'first line second line' }])
+  })
+
+  test('a block with text but no readable note is malformed, not silence', async () => {
+    expect(parseReply('<notes>\nThe function is wrong for 1900.\n</notes>')).toBeNull()
+  })
+
   test('an empty block is no notes; no block is malformed', async () => {
     expect(parseReply('<notes>\n</notes>')).toEqual([])
     expect(parseReply('Looks fine to me.')).toBeNull()

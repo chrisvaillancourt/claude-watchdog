@@ -261,7 +261,7 @@ describe('watchdog: failures and guards', () => {
     expect(w.modelRows()).toHaveLength(0)
     const status = await run($, 'status')
     expect(status.text).toContain('1 reviews (1 incomplete)')
-    expect(status.text).toContain('incomplete')
+    expect(w.logLines()[0]).toMatchObject({ outcome: 'incomplete', reply: 'Looks fine to me.' })
   })
 
   test('an API failure is incomplete and keeps the evidence for the next review', async ($, on) => {

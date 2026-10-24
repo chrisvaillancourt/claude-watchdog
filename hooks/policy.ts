@@ -326,12 +326,24 @@ export function parseReply(reply: string): Note[] | null {
   const last = blocks.at(-1)
   if (!last) return null
   const notes: Note[] = []
+  let stray = false
   for (const line of (last[1] ?? '').split('\n')) {
-    const m = /^\s*(?:[-*]\s*)?\[(nit|concern|blocker)\]\s*(.+?)\s*$/i.exec(line)
-    if (m && m[1] && m[2]) notes.push({ severity: m[1].toLowerCase() as Severity, text: cut(m[2], NOTE_CHARS) })
+    if (line.trim() === '') continue
+    const m = NOTE_LINE.exec(line)
+    const severity = m ? (m[1] ?? m[2] ?? m[3]) : undefined
+    const prev = notes.at(-1)
+    if (m && severity && m[4]) notes.push({ severity: severity.toLowerCase() as Severity, text: m[4] })
+    else if (prev && /^\s/.test(line)) prev.text = `${prev.text} ${line.trim()}`
+    else stray = true
   }
-  return notes
+  // Text in the block that reads as no note is a reply we can't read, not silence.
+  if (notes.length === 0 && stray) return null
+  return notes.map(n => ({ ...n, text: cut(n.text, NOTE_CHARS) }))
 }
+
+/** `[concern] x`, `(concern) x`, `concern: x`, `**Concern**: x`, each optionally a list item. */
+const NOTE_LINE =
+  /^\s*(?:[-*\u2022]\s*)?(?:\[(nit|concern|blocker)\]|\((nit|concern|blocker)\)|(?:\*\*|__)?(nit|concern|blocker)(?:\*\*|__)?\s*[:\u2013\u2014-])\s*(.+?)\s*$/i
 
 const OVERRIDES: readonly RegExp[] = [
   /\bignore\s+(?:all\s+)?(?:of\s+)?(?:the\s+|your\s+)?(?:prior|previous|earlier|above|system|user)\s+(?:user\s+|system\s+)?(?:instructions|prompts?|rules)\b/i,
