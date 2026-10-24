@@ -1,24 +1,88 @@
 # watchdog
 
-A Claude Code mod (function-hook plugin). Replace this paragraph with what the mod does and why, in two or three sentences.
+A Claude Code mod (function-hook plugin) that reviews what the main agent did each turn and raises short, severity-tagged notes back into the session: `nit`, `concern` or `blocker`. The main model doesn't call it and doesn't choose when to be reviewed. It's a second pair of eyes that reads the ask and the work and stays quiet when there's nothing concrete to say.
 
-> This repository is also the template for new mods: `scripts/new-mod.sh <mod-name>` creates `../claude-<mod-name>` with every `watchdog` renamed, a fresh git history and one commit. Delete this note in the new repo.
+It's a port of the idea behind omp's advisor/WATCHDOG, cut down to one reviewer. It has nothing to do with Claude Code's built-in `/advisor` (where the model chooses to consult a stronger model) and doesn't touch it.
+
+It's **off by default**, since every review is a model call billed to you.
 
 ## Behavior
 
-- What the mod does, when, and to which conversations (main only, or subagents too).
-- What it costs (model calls, tokens) and how the options bound it.
-- What it never does.
+- **What it reviews.** Turns of the main conversation that end with an answer. Every `reviewInterval`th such turn triggers a review; skipped turns are folded into the next one. Subagents' own turns, interrupted turns and failed turns are never reviewed, and neither is a turn watchdog itself started.
+- **What the reviewer sees.** Your prompt, the tool calls the agent made (tool name and the key arguments: paths, commands, patterns, the text written by `Write`/`Edit`), an excerpt of each result (errors kept longer), and the final answer, all truncated to `maxDeltaChars`, with markers where something was cut. Plus your `WATCHDOG.md` guidance, if any. It doesn't see the agent's intermediate narration or thinking: a reviewer judges the work better without the author's story.
+- **What comes back.** At most `maxNotes` nits and concerns per review (blockers aren't capped). Content-free notes ("lgtm", "no issues") are dropped, and so is a note that repeats an earlier one at the same or a lower severity. If the reply contains an instruction override ("ignore previous instructions") or a destructive shell command that wasn't already in the reviewed work, the whole reply is quarantined and nothing from it is delivered.
+- **Where notes go.**
+  - Concerns and blockers are added to the conversation as a hidden message the model reads on its next request.
+  - Nits are shown to you (a notice in the transcript and a toast) and never sent to the model.
+  - If the turn has ended and a note is at or above `continueSeverity` (default `concern`), watchdog wakes the agent with one new turn asking it to address the notes or say why not. After a wake, concerns can't wake it again for `immuneTurns` turns; blockers can.
+  - Notes for a turn that's no longer the latest (you started another turn while the review ran) aren't sent to the model at all. You see them as a late notice instead.
+  - If you interrupted the turn, it's never woken.
+- **Failures.** An API error, a timeout, an empty or malformed reply is counted as "review incomplete" and shown in `/watchdog status` and the log. It's never reported as approval.
+- **Headless sessions** (`claude -p`, the SDK) are skipped unless `reviewHeadless` is on. Then the review runs before the process exits, notes are logged (and appended to the transcript), and there's no wake.
+- **What it never does.** It never gives the reviewer tools, never changes the main session's model, system prompt or tool list, never reviews subagents, and never registers or intercepts `/advisor`.
 
 ## Command
 
-`/watchdog [on|off|status]`: show or set whether the mod is on for this session.
+```text
+/watchdog            status (same as /watchdog status)
+/watchdog on         turn reviews on for this session
+/watchdog off        turn reviews off for this session; an in-flight review is discarded
+/watchdog review     review what has happened since the last review, now
+/watchdog status     on or off, reviews run, notes delivered, tokens used
+```
+
+## WATCHDOG.md
+
+Reviewer-only guidance: what the reviewer should hold the agent to (project rules, things it keeps getting wrong). The main agent never reads it. watchdog reads, in this order, and joins what it finds:
+
+1. `~/.claude/WATCHDOG.md` (yours, for every project)
+2. `<project root>/WATCHDOG.md`
+3. `<project root>/.claude/WATCHDOG.md`
+
+The project root is the session's root (where it started, or where `/cd` moved it). Each file is read at review time, so edits apply to the next review. Guidance is capped at 8,000 characters in total; the rest is cut with a marker.
 
 ## Options
 
+Set in `/config`, or in settings under `pluginConfigs["watchdog@watchdog"].options` (the key is the plugin id, `<plugin>@<marketplace>`):
+
 | Option | Default | What it does |
 | --- | --- | --- |
-| `enabled` | `true` | Turn the mod on for new sessions. `/watchdog on|off` overrides it per session. |
+| `enabled` | `false` | Turn reviews on for new sessions. `/watchdog on\|off` overrides it per session. |
+| `model` | `sonnet` | The reviewer's model: an alias (`haiku`, `sonnet`, `opus`) or a full model id. |
+| `effort` | `medium` | The reviewer's effort: `low`, `medium`, `high`, `xhigh` or `max`. |
+| `reviewInterval` | `1` | Review every Nth answered turn (skipped turns are included in the next review). |
+| `continueSeverity` | `concern` | Lowest severity that wakes a finished turn: `concern`, `blocker` or `never`. Nits never wake. |
+| `immuneTurns` | `3` | After a wake, how many main turns concerns can't wake again. Blockers are exempt. |
+| `maxNotes` | `4` | Nits and concerns admitted per review. Blockers aren't capped. |
+| `maxDeltaChars` | `24000` | Characters of turn evidence sent per review. |
+| `timeoutSeconds` | `120` | How long one review may take before it's abandoned as incomplete. |
+| `reviewHeadless` | `false` | Also review in headless sessions (`-p`, SDK). No wake there. |
+
+## What it costs
+
+One `$.model.complete` call per review, on the `model` option, billed to your session's credentials. It's bounded by the options:
+
+- **Input:** a fixed reviewer prompt of about 900 tokens, at most 8,000 characters of WATCHDOG.md guidance (about 2,000 tokens) and at most `maxDeltaChars` of evidence (24,000 characters, about 6,000 tokens). So at most about 9,000 input tokens a review; a short turn is a few hundred to a couple of thousand.
+- **Output:** at most 1,024 tokens; usually under 200.
+- **How often:** at most once per answered main turn (`reviewInterval` 1), plus one per `/watchdog review`. A wake starts one more main turn, billed like any other turn.
+
+Completions don't show up in Claude Code's session cost or `/cost`, so watchdog keeps its own count: `/watchdog status` shows the session's reviews and tokens, and each review is logged as a JSON line in `~/.claude/watchdog/<session id>.jsonl` (model, token counts, notes kept and dropped, outcome).
+
+### Why a completion, not a subagent or a fork
+
+- `$.model.complete` sends a compact, bounded summary to a model you choose, returns its exact token usage, and can be timed out. Its weakness: the reviewer can only judge what's in the evidence; it can't open files to check a suspicion.
+- A forked side question (`$.model.fork`) would reread the whole conversation on the main model each review (cheap per token when cached, but large and counted against your plan's usage), and it would see the agent's own reasoning and justifications, which make a reviewer more forgiving.
+- A read-only reviewer subagent could investigate with Read and Grep, but each investigation step rereads its context, so a review costs several times more, and its report has its own delivery path into the main session that would need to be proven not to bypass the quarantine.
+
+## Limitations
+
+- **One reviewer, final-answer cadence.** omp can run several reviewers with their own scopes and models, and can review each tool-call round. watchdog runs one, at the end of a turn.
+- **No investigation.** The reviewer has no tools; it can't verify a claim against files that aren't in the evidence. Evidence is truncated, so a bug in a cut part of a long file can be missed.
+- **Plan mode isn't detected.** A wake in plan mode starts a turn in plan mode (the agent can't edit there, but it does spend a turn). Set `continueSeverity` to `never` if that bothers you.
+- **Late notes aren't held for later.** A note about a turn you've already moved past is shown to you, not queued for the model's next turn.
+- **One review at a time.** A turn that ends while a review runs is folded into one follow-up review.
+- **The quarantine is a heuristic.** It catches the common forms of instruction overrides and destructive commands (`rm -rf`, `git reset --hard`, force pushes, `mkfs`, `dd` onto a device, `DROP TABLE`), not every phrasing.
+- **Severity is the reviewer's opinion.** A `blocker` tag doesn't make a note right. The wake message asks the agent to weigh the note against the evidence.
 
 ## Install
 
