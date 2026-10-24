@@ -414,8 +414,8 @@ const DESTRUCTIVE: readonly RegExp[] = [
   String.raw`\bdrop\s+(?:table|database|schema)\b`,
 ].map(head => new RegExp(head, 'gi'))
 
-/** Characters that make the shell expand a word: a directive holding any never gets a provenance exemption. */
-const EXPANSIVE = new Set(['$', '*', '?', '[', '~', '{'])
+/** Characters that make the shell expand a word: a directive holding any never gets a provenance exemption (`~` too, where it expands: see `extent`). */
+const EXPANSIVE = new Set(['$', '*', '?', '[', '{'])
 
 /**
  * A directive's words exactly as written, quotes and escapes included (the
@@ -431,6 +431,8 @@ function extent(text: string, start: number): string[] | null {
     const c = text[i] as string
     const n = text[i + 1]
     if (EXPANSIVE.has(c)) return null
+    // `~` expands at the start of a word (quotes aside, to stay conservative) or after `=` or `:`.
+    if (c === '~' && (/^["']*$/.test(word) || /[=:]$/.test(word))) return null
     if (quote) {
       if (c === '`' || c === '\n') return null
       // Inside double quotes `\"` and `\\` are escapes; any other backslash is literal there.
