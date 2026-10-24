@@ -243,7 +243,7 @@ async function review(
   }
   const summary = `${admitted.kept.length} notes (${d.toModel.length} to the model, ${d.toPerson.length} to you${d.late ? ', late' : ''})${woke ? '; woke the agent' : ''}.`
   await update($, sessionAtom, cur => ({ ...cur, lastOutcome: summary }))
-  await appendLog($, { ...logBase, outcome: d.late ? 'late' : 'delivered', kept: admitted.kept.length, dropped: admitted.dropped, toModel: d.toModel.length, toPerson: d.toPerson.length, wake: woke })
+  await appendLog($, { ...logBase, outcome: d.late ? 'late' : 'delivered', notes: admitted.kept, kept: admitted.kept.length, dropped: admitted.dropped, toModel: d.toModel.length, toPerson: d.toPerson.length, wake: woke })
   log($, summary)
 }
 

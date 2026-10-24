@@ -18,7 +18,7 @@ It's **off by default**, since every review is a model call billed to you.
   - Notes for a turn that's no longer the latest (you started another turn while the review ran) aren't sent to the model at all. You see them as a late notice instead.
   - If you interrupted the turn, it's never woken.
 - **Failures.** An API error, a timeout, an empty or malformed reply is counted as "review incomplete" and shown in `/watchdog status` and the log. It's never reported as approval.
-- **Headless sessions** (`claude -p`, the SDK) are skipped unless `reviewHeadless` is on. Then the review runs before the process exits, notes are logged (and appended to the transcript), and there's no wake.
+- **Headless sessions** (`claude -p`, the SDK) are skipped unless `reviewHeadless` is on. Then the review runs before the process exits and its notes are written to the log (below); there's no wake, and on Claude Code 2.1.310 a note appended after a `-p` run's answer isn't kept in its transcript.
 - **What it never does.** It never gives the reviewer tools, never changes the main session's model, system prompt or tool list, never reviews subagents, and never registers or intercepts `/advisor`.
 
 ## Command
@@ -66,7 +66,7 @@ One `$.model.complete` call per review, on the `model` option, billed to your se
 - **Output:** at most 1,024 tokens; usually under 200.
 - **How often:** at most once per answered main turn (`reviewInterval` 1), plus one per `/watchdog review`. A wake starts one more main turn, billed like any other turn.
 
-Completions don't show up in Claude Code's session cost or `/cost`, so watchdog keeps its own count: `/watchdog status` shows the session's reviews and tokens, and each review is logged as a JSON line in `~/.claude/watchdog/<session id>.jsonl` (model, token counts, notes kept and dropped, outcome).
+Completions don't show up in Claude Code's session cost or `/cost`, so watchdog keeps its own count: `/watchdog status` shows the session's reviews and tokens, and each review is logged as a JSON line in `~/.claude/watchdog/<session id>.jsonl` (model, token counts, the notes delivered with their text, how many the guard dropped, outcome).
 
 ### Why a completion, not a subagent or a fork
 

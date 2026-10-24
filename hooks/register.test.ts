@@ -325,6 +325,7 @@ describe('watchdog: failures and guards', () => {
     await w.clock.settle()
     const [line] = w.logLines()
     expect(line).toMatchObject({ kind: 'review', outcome: 'delivered', model: 'sonnet', inputTokens: 900, outputTokens: 40, kept: 1, wake: true })
+    expect(line.notes).toEqual([{ severity: 'concern', text: 'add() returns a - b; it should return a + b' }])
   })
 
   test('/watchdog review runs a review now', async ($, on) => {
