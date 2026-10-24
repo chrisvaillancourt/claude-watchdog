@@ -372,14 +372,16 @@ function directive(text: string): string {
 }
 
 /**
- * Why a whole reply must be dropped, or null. Any instruction override
+ * Why a whole reply must be dropped, or null: read over the raw reply,
+ * before parsing or truncation, fences and text outside the block included.
+ * Any instruction override
  * quarantines it. Every destructive directive, each checked on its own,
  * quarantines it unless the reviewed evidence holds that same complete
  * directive (the note is quoting what the agent ran): one quoted command
  * never vouches for another of its kind.
  */
-export function quarantine(notes: readonly Note[], evidence: string): string | null {
-  const text = notes.map(n => n.text).join('\n')
+export function quarantine(reply: string, evidence: string): string | null {
+  const text = reply.normalize('NFKC')
   if (OVERRIDES.some(r => r.test(text))) return 'instruction override'
   const source = evidence.replace(/\s+/g, ' ').toLowerCase()
   for (const r of DESTRUCTIVE) {

@@ -190,19 +190,19 @@ async function review(
     log($, 'a review finished after watchdog was turned off or the conversation cleared; discarded')
     return
   }
+  const hazard = result.isAnswered ? quarantine(result.text, delta) : null
+  if (hazard) {
+    await update($, sessionAtom, cur => ({ ...consume(addStats(cur, { reviews: 1, quarantined: 1, ...usageStats(usage) }), upTo), lastOutcome: `quarantined (${hazard}); nothing delivered.` }))
+    await appendLog($, { ...logBase, outcome: 'quarantined', reason: hazard })
+    await appendRow($, 'system', `watchdog: quarantined a review reply (${hazard}); nothing from it was delivered.`)
+    return
+  }
   const notes = result.isAnswered ? parseReply(result.text) : null
   if (notes === null) {
     const reason = result.isAnswered ? 'the reply had no <notes> block' : result.reason
     await update($, sessionAtom, cur => ({ ...addStats(cur, { reviews: 1, incomplete: 1, ...usageStats(usage) }), lastOutcome: `incomplete (${reason}); the evidence is kept for the next review.` }))
     await appendLog($, { ...logBase, outcome: 'incomplete', reason, ...(result.isAnswered ? { reply: result.text.slice(0, 2000) } : {}) })
     log($, `review incomplete: ${reason}`)
-    return
-  }
-  const hazard = quarantine(notes, delta)
-  if (hazard) {
-    await update($, sessionAtom, cur => ({ ...consume(addStats(cur, { reviews: 1, quarantined: 1, ...usageStats(usage) }), upTo), lastOutcome: `quarantined (${hazard}); nothing delivered.` }))
-    await appendLog($, { ...logBase, outcome: 'quarantined', reason: hazard, notes: notes.length })
-    await appendRow($, 'system', `watchdog: quarantined a review reply (${hazard}); nothing from it was delivered.`)
     return
   }
   const admitted = admit(notes, s.seen, config.maxNotes)
