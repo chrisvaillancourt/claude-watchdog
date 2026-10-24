@@ -244,35 +244,60 @@ function render(e: Evidence): string {
   }
 }
 
-/** The compact delta: every prompt, marker and answer, then the newest tool calls that fit, cuts marked. */
-export function buildDelta(ev: readonly Evidence[], maxChars: number): string {
-  const parts = ev.map(e => ({ e, text: render(e), keep: e.kind !== 'tool' }))
-  const fixed = parts.filter(p => p.keep)
-  const fixedLen = fixed.reduce((n, p) => n + p.text.length + 1, 0)
-  if (fixedLen > maxChars) {
-    const each = Math.max(200, Math.floor(maxChars / Math.max(1, fixed.length)) - 40)
-    for (const p of fixed) p.text = cut(p.text, each)
-  }
-  let budget = maxChars - parts.filter(p => p.keep).reduce((n, p) => n + p.text.length + 1, 0) - 80
-  for (let i = parts.length - 1; i >= 0; i--) {
-    const p = parts[i]
-    if (!p || p.keep) continue
-    if (p.text.length + 1 <= budget) {
-      p.keep = true
-      budget -= p.text.length + 1
-    } else budget = -1
-  }
+type Part = { e: Evidence; text: string; keep: boolean }
+
+function assemble(parts: readonly Part[]): string {
   const lines: string[] = []
-  let omitted = 0
+  let omitted: Part[] = []
+  const flush = () => {
+    if (omitted.length === 0) return
+    const what = omitted.every(p => p.e.kind === 'tool') ? 'tool calls' : 'items'
+    lines.push(`[${omitted.length} earlier ${what} omitted]`)
+    omitted = []
+  }
   for (const p of parts) {
     if (p.keep) {
-      if (omitted) lines.push(`[${omitted} earlier tool calls omitted]`)
-      omitted = 0
+      flush()
       lines.push(p.text)
-    } else omitted++
+    } else omitted.push(p)
   }
-  if (omitted) lines.push(`[${omitted} earlier tool calls omitted]`)
+  flush()
   return lines.join('\n')
+}
+
+/**
+ * The compact delta, never longer than `maxChars` (markers included).
+ * Prompts, answers and markers come first, newest first, then the newest
+ * tool calls that fit; the newest prompt and answer are cut to fit rather
+ * than dropped. Older items are omitted with a marker saying how many.
+ */
+export function buildDelta(ev: readonly Evidence[], maxChars: number): string {
+  const parts: Part[] = ev.map(e => ({ e, text: render(e), keep: false }))
+  const idx = parts.map((_, i) => i).reverse()
+  const order = [...idx.filter(i => parts[i]?.e.kind !== 'tool'), ...idx.filter(i => parts[i]?.e.kind === 'tool')]
+  let budget = maxChars - 120 // room for omission markers
+  for (const i of order) {
+    const p = parts[i]
+    if (!p) continue
+    const need = p.text.length + 1
+    if (need <= budget) {
+      p.keep = true
+      budget -= need
+    } else if ((p.e.kind === 'prompt' || p.e.kind === 'answer') && budget >= 300 && !parts.some(q => q.keep && q.e.kind === p.e.kind)) {
+      p.text = cut(p.text, budget - 40)
+      p.keep = true
+      budget -= p.text.length + 1
+    }
+  }
+  let out = assemble(parts)
+  // Markers between many separated runs can still overflow: drop the oldest kept item until it fits.
+  while (out.length > maxChars) {
+    const oldest = parts.find(p => p.keep)
+    if (!oldest || parts.filter(p => p.keep).length === 1) return out.slice(0, maxChars)
+    oldest.keep = false
+    out = assemble(parts)
+  }
+  return out
 }
 
 // ---------------------------------------------------------------- guidance and prompt

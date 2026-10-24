@@ -9,7 +9,7 @@ It's **off by default**, since every review is a model call billed to you.
 ## Behavior
 
 - **What it reviews.** Turns of the main conversation that end with an answer. Every `reviewInterval`th such turn triggers a review; skipped turns are folded into the next one. Subagents' own turns, interrupted turns and failed turns are never reviewed, and neither is a turn watchdog itself started.
-- **What the reviewer sees.** Your prompt, the tool calls the agent made (tool name and the key arguments: paths, commands, patterns, the text written by `Write`/`Edit`), an excerpt of each result (errors kept longer), and the final answer, all truncated to `maxDeltaChars`, with markers where something was cut. Plus your `WATCHDOG.md` guidance, if any. It doesn't see the agent's intermediate narration or thinking: a reviewer judges the work better without the author's story.
+- **What the reviewer sees.** Your prompt, the tool calls the agent made (tool name and the key arguments: paths, commands, patterns, the text written by `Write`/`Edit`), an excerpt of each result (errors kept longer), and the final answer, held to `maxDeltaChars` in total (markers included). Prompts and answers come first, newest first, then the newest tool calls that fit; older items are left out with a marker saying how many, and the newest prompt and answer are cut to fit rather than dropped. Plus your `WATCHDOG.md` guidance, if any. It doesn't see the agent's intermediate narration or thinking: a reviewer judges the work better without the author's story.
 - **What comes back.** At most `maxNotes` nits and concerns per review (blockers aren't capped). Content-free notes ("lgtm", "no issues") are dropped, and so is a note that repeats an earlier one at the same or a lower severity. If the reply contains, anywhere (inside or outside its notes, before any cutting), an instruction override ("ignore previous instructions") or any destructive shell command that wasn't itself in the reviewed work (each one is checked on its own, so quoting a command the agent ran never vouches for a different one), the whole reply is quarantined and nothing from it is delivered.
 - **Where notes go.**
   - Concerns and blockers are added to the conversation as a hidden message the model reads on its next request.
@@ -62,7 +62,7 @@ Set in `/config`, or in settings under `pluginConfigs["watchdog@watchdog"].optio
 
 One `$.model.complete` call per review, on the `model` option, billed to your session's credentials. It's bounded by the options:
 
-- **Input:** a fixed reviewer prompt of about 900 tokens, at most 8,000 characters of WATCHDOG.md guidance (about 2,000 tokens) and at most `maxDeltaChars` of evidence (24,000 characters, about 6,000 tokens). So at most about 9,000 input tokens a review; a short turn is a few hundred to a couple of thousand.
+- **Input:** a fixed reviewer prompt of about 900 tokens, at most 8,000 characters of WATCHDOG.md guidance (about 2,000 tokens) and at most `maxDeltaChars` of evidence, a hard ceiling (24,000 characters, about 6,000 tokens). So at most about 9,000 input tokens a review; a short turn is a few hundred to a couple of thousand.
 - **Output:** at most 1,024 tokens; usually under 200.
 - **How often:** at most once per answered main turn (`reviewInterval` 1), plus one per `/watchdog review`. A wake starts one more main turn, billed like any other turn.
 

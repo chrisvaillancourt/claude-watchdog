@@ -136,11 +136,31 @@ describe('evidence', () => {
     for (let i = 0; i < 50; i++) ev.push({ kind: 'tool', id: `t${i}`, tool: 'Read', input: `file_path: /f${i}`, result: 'r'.repeat(500) })
     ev.push({ kind: 'answer', text: 'Done: def add(a,b): return a-b' })
     const d = buildDelta(ev, 4000)
-    expect(d.length).toBeLessThanOrEqual(4300)
+    expect(d.length).toBeLessThanOrEqual(4000)
     expect(d).toContain('write add()')
     expect(d).toContain('return a-b')
     expect(d).toContain('earlier tool calls omitted')
     expect(d).toContain('/f49')
+  })
+})
+
+describe('delta ceiling', () => {
+  test('maxDeltaChars holds for many accumulated prompts and answers, newest kept', async () => {
+    const ev: Evidence[] = Array.from({ length: 100 }, (_, i) => [
+      { kind: 'prompt' as const, text: `request ${i}: ` + 'p'.repeat(4000) },
+      { kind: 'answer' as const, text: `answer ${i}: ` + 'a'.repeat(6000) },
+    ]).flat()
+    const d = buildDelta(ev, 24000)
+    expect(d.length).toBeLessThanOrEqual(24000)
+    expect(d).toContain('answer 99:')
+    expect(d).toContain('request 99:')
+    expect(d).toContain('omitted')
+  })
+
+  test('the smallest budget still holds when one answer is bigger than it', async () => {
+    const d = buildDelta([{ kind: 'prompt', text: 'ask' }, { kind: 'answer', text: 'z'.repeat(6000) }], 2000)
+    expect(d.length).toBeLessThanOrEqual(2000)
+    expect(d).toContain('## Final answer')
   })
 })
 
