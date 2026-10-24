@@ -48,7 +48,7 @@ Set in `/config`, or in settings under `pluginConfigs["watchdog@watchdog"].optio
 | Option | Default | What it does |
 | --- | --- | --- |
 | `enabled` | `false` | Turn reviews on for new sessions. `/watchdog on\|off` overrides it per session. |
-| `model` | `sonnet` | The reviewer's model: an alias (`haiku`, `sonnet`, `opus`) or a full model id. |
+| `model` | `sonnet` | The reviewer's model: an alias (`haiku`, `sonnet`, `opus`) or a full model id. `haiku` is the cheap option, but in one live check at low effort it stayed silent on a bug it caught at another time. |
 | `effort` | `medium` | The reviewer's effort: `low`, `medium`, `high`, `xhigh` or `max`. |
 | `reviewInterval` | `1` | Review every Nth answered turn (skipped turns are included in the next review). |
 | `continueSeverity` | `concern` | Lowest severity that wakes a finished turn: `concern`, `blocker` or `never`. Nits never wake. |
@@ -79,7 +79,7 @@ Completions don't show up in Claude Code's session cost or `/cost`, so watchdog 
 - **One reviewer, final-answer cadence.** omp can run several reviewers with their own scopes and models, and can review each tool-call round. watchdog runs one, at the end of a turn.
 - **No investigation.** The reviewer has no tools; it can't verify a claim against files that aren't in the evidence. Evidence is truncated, so a bug in a cut part of a long file can be missed.
 - **Plan mode isn't detected.** A wake in plan mode starts a turn in plan mode (the agent can't edit there, but it does spend a turn). Set `continueSeverity` to `never` if that bothers you.
-- **Late notes aren't held for later.** A note about a turn you've already moved past is shown to you, not queued for the model's next turn.
+- **Late notes aren't held for later.** A note about a turn you've already moved past is shown to you, not queued for the model's next turn. omp keeps such notes, marked with their age, for the agent's next turn; watchdog doesn't in v0.1.
 - **One review at a time.** A turn that ends while a review runs is folded into one follow-up review.
 - **The quarantine is a heuristic.** It catches the common forms of instruction overrides and destructive commands (`rm -rf`, `git reset --hard`, force pushes, `mkfs`, `dd` onto a device, `DROP TABLE`), not every phrasing. A command counts as quoted only when the evidence holds it whole, up to a quote, backtick or shell separator; a note that runs prose on after a quoted command without backticks is quarantined, which errs on the safe side.
 - **Another plugin can hide rows from it.** A plugin seated above watchdog can send a row past watchdog's hook (the debug log says `session.append bypassed by <plugin>`); that row isn't part of the evidence.
