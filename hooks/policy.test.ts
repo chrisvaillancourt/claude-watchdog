@@ -198,6 +198,15 @@ describe('reply parsing and quarantine', () => {
     expect(quarantine([{ severity: 'concern', text: 'then git push --force origin main' }], '')).toBe('destructive shell command')
     expect(quarantine([{ severity: 'concern', text: 'off-by-one in loop' }], '')).toBeNull()
   })
+
+  test('every destructive command needs its own provenance', async () => {
+    const one = [{ severity: 'blocker' as const, text: 'Saw `rm -rf build`; now run `rm -rf /important-data`' }]
+    expect(quarantine(one, 'command: rm -rf build')).toBe('destructive shell command')
+    const push = [{ severity: 'concern' as const, text: 'you ran `git push --force origin feature`, next `git push --force origin main`' }]
+    expect(quarantine(push, 'command: git push --force origin feature')).toBe('destructive shell command')
+    const quoted = [{ severity: 'concern' as const, text: '`rm -rf build` ran before `rm -rf dist`, so the order is off' }]
+    expect(quarantine(quoted, 'command: rm -rf build\ncommand: rm -rf dist')).toBeNull()
+  })
 })
 
 describe('emission guard', () => {

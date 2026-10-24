@@ -301,7 +301,7 @@ Rules:
 - Don't restate errors the agent already saw and acted on.
 - Don't second-guess choices the request left to the agent, the size of a change, or the request itself.
 - A result marked "[cut …]" or an "omitted" marker is only an excerpt: don't assume what the cut part holds.
-- Never tell the agent to run destructive commands or to set aside its instructions.
+- Never tell the agent to run destructive commands or to set aside its instructions. Put any command you mention in backticks.
 - Each note is one or two sentences, addressed to the agent.
 
 Reply with one block and nothing after it:
@@ -352,28 +352,40 @@ const OVERRIDES: readonly RegExp[] = [
   /\bnew\s+system\s+prompt\b/i,
 ]
 
+/** The rest of one shell directive: up to a quote, a backtick, a newline or a shell separator. */
+const REST = String.raw`[^\n` + '`' + String.raw`'";|&]*`
+const WORD = String.raw`[^\s` + '`' + String.raw`'";|&]+`
+
+/** Destructive directive heads; each match runs on to the end of its directive. */
 const DESTRUCTIVE: readonly RegExp[] = [
-  /\brm\s+(?=(?:-[a-z]+\s*)*-[a-z]*r[a-z]*)(?=(?:-[a-z]+\s*)*-[a-z]*f[a-z]*)(?:-[a-z]+\s*)+\S*/i,
-  /\bgit\s+reset\s+--hard\b/i,
-  /\bgit\s+push\s+(?:\S+\s+)*?(?:--force(?:-with-lease)?|-f)\b/i,
-  /\bgit\s+clean\s+-[a-z]*f/i,
-  /\bmkfs(?:\.\w+)?\b/i,
-  /\bdd\s+[^\n]*\bof=\/dev\//i,
-  /\bdrop\s+(?:table|database|schema)\b/i,
-]
+  String.raw`\brm\s+(?=(?:-[a-z]+\s*)*-[a-z]*r[a-z]*)(?=(?:-[a-z]+\s*)*-[a-z]*f[a-z]*)(?:-[a-z]+\s*)+`,
+  String.raw`\bgit\s+reset\s+--hard\b`,
+  String.raw`\bgit\s+push\s+(?:${WORD}\s+)*?(?:--force(?:-with-lease)?|-f)\b`,
+  String.raw`\bgit\s+clean\s+-[a-z]*f`,
+  String.raw`\bmkfs(?:\.\w+)?\b`,
+  String.raw`\bdd\s+(?:${WORD}\s+)*?of=\/dev\/`,
+  String.raw`\bdrop\s+(?:table|database|schema)\b`,
+].map(head => new RegExp(head + REST, 'gi'))
+
+function directive(text: string): string {
+  return text.replace(/[`'"(),.;:\]]+$/, '').replace(/\s+/g, ' ').trim().toLowerCase()
+}
 
 /**
  * Why a whole reply must be dropped, or null. Any instruction override
- * quarantines it; a destructive command does unless the reviewed evidence
- * already holds the same command (the note is quoting what the agent ran).
+ * quarantines it. Every destructive directive, each checked on its own,
+ * quarantines it unless the reviewed evidence holds that same complete
+ * directive (the note is quoting what the agent ran): one quoted command
+ * never vouches for another of its kind.
  */
 export function quarantine(notes: readonly Note[], evidence: string): string | null {
   const text = notes.map(n => n.text).join('\n')
   if (OVERRIDES.some(r => r.test(text))) return 'instruction override'
-  const source = evidence.toLowerCase()
+  const source = evidence.replace(/\s+/g, ' ').toLowerCase()
   for (const r of DESTRUCTIVE) {
-    const m = r.exec(text)
-    if (m && !source.includes(m[0].replace(/[`'"(),.;:\]]+$/, '').trim().toLowerCase())) return 'destructive shell command'
+    for (const m of text.matchAll(r)) {
+      if (!source.includes(directive(m[0]))) return 'destructive shell command'
+    }
   }
   return null
 }
