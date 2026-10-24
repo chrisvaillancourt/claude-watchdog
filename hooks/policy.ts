@@ -440,21 +440,25 @@ const SEEN_CAP = 256
 export type Admission = { kept: Note[]; dropped: number; seen: SeenNote[] }
 
 /**
- * Drops content-free notes and repeats (of earlier reviews or within this one)
- * at the same or a lower severity, then keeps every blocker and the highest
- * `max` other notes, most severe first.
+ * Drops content-free notes, coalesces copies within this review to the most
+ * severe one, drops repeats of earlier reviews at the same or a lower
+ * severity, then keeps every blocker and the highest `max` other notes, most
+ * severe first. `seen` keeps one entry per key, at its highest severity.
  */
 export function admit(notes: readonly Note[], seen: readonly SeenNote[], max: number): Admission {
   const prior = new Map(seen.map(s => [s.key, s.severity] as const))
-  const batch = new Map<string, Severity>()
-  const candidates: { note: Note; key: string; i: number }[] = []
+  // One candidate per normalized key: its most severe copy (the first of equals), at the first copy's place.
+  const byKey = new Map<string, { note: Note; key: string; i: number }>()
   notes.forEach((note, i) => {
     const key = normalizeNote(note.text)
     if (!key || NOISE.has(key)) return
-    const before = batch.get(key) ?? prior.get(key)
-    if (before !== undefined && RANK[before] >= RANK[note.severity]) return
-    batch.set(key, note.severity)
-    candidates.push({ note, key, i })
+    const had = byKey.get(key)
+    if (!had) byKey.set(key, { note, key, i })
+    else if (RANK[note.severity] > RANK[had.note.severity]) byKey.set(key, { note, key, i: had.i })
+  })
+  const candidates = [...byKey.values()].filter(c => {
+    const before = prior.get(c.key)
+    return before === undefined || RANK[before] < RANK[c.note.severity]
   })
   candidates.sort((a, b) => RANK[b.note.severity] - RANK[a.note.severity] || a.i - b.i)
   const kept: { note: Note; key: string }[] = []

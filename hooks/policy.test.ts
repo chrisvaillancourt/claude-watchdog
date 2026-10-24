@@ -251,6 +251,18 @@ describe('emission guard', () => {
     expect(r.seen.map(s => s.key)).toContain('b1')
   })
 
+  test('same-batch copies coalesce to one note at the highest severity, remembered once', async () => {
+    const first = admit([
+      { severity: 'concern', text: 'Missing await loses writes' },
+      { severity: 'blocker', text: 'Missing await loses writes.' },
+      { severity: 'nit', text: 'missing await loses writes' },
+    ], [], 4)
+    expect(first.kept).toEqual([{ severity: 'blocker', text: 'Missing await loses writes.' }])
+    expect(first.seen).toEqual([{ key: 'missing await loses writes', severity: 'blocker' }])
+    expect(first.dropped).toBe(2)
+    expect(admit([{ severity: 'blocker', text: 'Missing await loses writes' }], first.seen, 4).kept).toEqual([])
+  })
+
   test('a repeat may come back escalated', async () => {
     const r = admit([{ severity: 'blocker', text: 'off by one in loop' }], [{ key: 'off by one in loop', severity: 'concern' }], 4)
     expect(r.kept).toHaveLength(1)
