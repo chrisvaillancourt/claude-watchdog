@@ -7,8 +7,64 @@
     "enabled": {
       "type": "boolean",
       "title": "Enabled",
-      "description": "Turn the mod on for new sessions. /watchdog on|off overrides it for a session.",
-      "default": true
+      "description": "Review turns in new sessions. Each review is a model call billed to you. /watchdog on|off overrides it for a session.",
+      "default": false
+    },
+    "model": {
+      "type": "string",
+      "title": "Reviewer model",
+      "description": "An alias (haiku, sonnet, opus) or a full model id.",
+      "default": "sonnet"
+    },
+    "effort": {
+      "type": "string",
+      "title": "Reviewer effort",
+      "description": "How hard the reviewer thinks.",
+      "options": ["low", "medium", "high", "xhigh", "max"],
+      "default": "medium"
+    },
+    "reviewInterval": {
+      "type": "number",
+      "title": "Review interval",
+      "description": "Review every Nth answered turn; skipped turns are folded into the next review.",
+      "default": 1
+    },
+    "continueSeverity": {
+      "type": "string",
+      "title": "Wake at severity",
+      "description": "Lowest note severity that wakes a finished turn. Nits never wake.",
+      "options": ["concern", "blocker", "never"],
+      "default": "concern"
+    },
+    "immuneTurns": {
+      "type": "number",
+      "title": "Cooldown turns",
+      "description": "After a wake, how many main turns concerns can't wake again. Blockers are exempt.",
+      "default": 3
+    },
+    "maxNotes": {
+      "type": "number",
+      "title": "Notes per review",
+      "description": "Nits and concerns admitted per review (1-32). Blockers aren't capped.",
+      "default": 4
+    },
+    "maxDeltaChars": {
+      "type": "number",
+      "title": "Evidence characters",
+      "description": "Characters of turn evidence sent per review (2000-200000).",
+      "default": 24000
+    },
+    "timeoutSeconds": {
+      "type": "number",
+      "title": "Review timeout (seconds)",
+      "description": "How long one review may take before it is abandoned as incomplete (10-600).",
+      "default": 120
+    },
+    "reviewHeadless": {
+      "type": "boolean",
+      "title": "Review headless sessions",
+      "description": "Also review in claude -p and SDK sessions, before the process exits. There is no wake there.",
+      "default": false
     }
   },
   "author": {
