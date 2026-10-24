@@ -25,6 +25,8 @@ A passive reviewer for the main conversation. The main model never calls it and 
 8. **Off switch.** `enabled` defaults to `false`. `/watchdog off` stops capture and reviews at once and bumps `generation`, so an in-flight review applies nothing. `/clear` (`session.end` with `reason: 'clear'`) resets evidence, turn ids, history and totals, keeping only the on/off override.
 9. **Headless.** Skipped unless `reviewHeadless` is on. Then the review runs inline in `turn.complete` (awaited, since the process exits after the answer), notes are logged with their text, and there is never a wake. Checked on 2.1.310: the meta row appended there resolves but isn't kept in a `-p` transcript, so the log is the record.
 
+Checked live on Claude Code 2.1.310 (Haiku as both agent and reviewer): headless with `reviewHeadless`, a dictated `is_even` bug drew a blocker and a Read call reached the evidence (prompt, tool, answer); interactive in a pty, a concern was appended as a meta row, the wake turn started under the plugin's frame and wasn't itself reviewed, and `/watchdog status` showed the review's tokens. A plugin seated above can bypass the `session.append` hook for some rows (seen at session start).
+
 Never: review a subagent's turns, register or intercept `/advisor`, give the reviewer tools, change the main session's model, system prompt or tool list, or let a raw reviewer reply reach the main conversation unparsed.
 
 ## Commands

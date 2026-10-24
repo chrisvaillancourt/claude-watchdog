@@ -82,6 +82,7 @@ Completions don't show up in Claude Code's session cost or `/cost`, so watchdog 
 - **Late notes aren't held for later.** A note about a turn you've already moved past is shown to you, not queued for the model's next turn.
 - **One review at a time.** A turn that ends while a review runs is folded into one follow-up review.
 - **The quarantine is a heuristic.** It catches the common forms of instruction overrides and destructive commands (`rm -rf`, `git reset --hard`, force pushes, `mkfs`, `dd` onto a device, `DROP TABLE`), not every phrasing.
+- **Another plugin can hide rows from it.** A plugin seated above watchdog can send a row past watchdog's hook (the debug log says `session.append bypassed by <plugin>`); that row isn't part of the evidence.
 - **Severity is the reviewer's opinion.** A `blocker` tag doesn't make a note right. The wake message asks the agent to weigh the note against the evidence.
 
 ## Install
