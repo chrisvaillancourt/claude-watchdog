@@ -262,7 +262,8 @@ describe('watchdog: failures and guards', () => {
     expect(w.modelRows()).toHaveLength(0)
     const status = await run($, 'status')
     expect(status.text).toContain('1 reviews (1 incomplete)')
-    expect(w.logLines()[0]).toMatchObject({ outcome: 'incomplete', reply: 'Looks fine to me.' })
+    expect(w.logLines()[0]).toMatchObject({ outcome: 'incomplete', inputTokens: 900, outputTokens: 40 })
+    expect(Object.keys(w.logLines()[0])).not.toContain('reply')
   })
 
   test('an API failure is incomplete and keeps the evidence for the next review', async ($, on) => {
@@ -336,6 +337,16 @@ describe('watchdog: failures and guards', () => {
     const [line] = w.logLines()
     expect(line).toMatchObject({ kind: 'review', outcome: 'delivered', model: 'sonnet', inputTokens: 900, outputTokens: 40, kept: 1, wake: true })
     expect(line.notes).toEqual([{ severity: 'concern', text: 'add() returns a - b; it should return a + b' }])
+  })
+
+  test('a quiet review logs its outcome and usage but not the raw reply', async ($, on) => {
+    const w = world(on, { reply: 'echoing SYNTHETIC_EXCERPT <notes></notes>' })
+    await start($)
+    await run($, 'on')
+    await turn($, 't1', 'x', 'y')
+    await w.clock.settle()
+    expect(w.logLines()[0]).toMatchObject({ outcome: 'quiet', kept: 0 })
+    expect(JSON.stringify(w.logLines())).not.toContain('SYNTHETIC_EXCERPT')
   })
 
   test('/watchdog review runs a review now', async ($, on) => {

@@ -66,7 +66,7 @@ One `$.model.complete` call per review, on the `model` option, billed to your se
 - **Output:** at most 1,024 tokens; usually under 200.
 - **How often:** at most once per answered main turn (`reviewInterval` 1), plus one per `/watchdog review`. A wake starts one more main turn, billed like any other turn.
 
-Completions don't show up in Claude Code's session cost or `/cost`, so watchdog keeps its own count: `/watchdog status` shows the session's reviews and tokens, and each review is logged as a JSON line in `~/.claude/watchdog/<session id>.jsonl` (model, token counts, the notes delivered with their text, how many the guard dropped, outcome, and the reviewer's raw reply when it raised nothing or couldn't be read).
+Completions don't show up in Claude Code's session cost or `/cost`, so watchdog keeps its own count: `/watchdog status` shows the session's reviews and tokens, and each review is logged as a JSON line in `~/.claude/watchdog/<session id>.jsonl` (model, token counts, the notes delivered with their text, how many the guard dropped, and the outcome; the reviewer's raw reply is never logged). The log stays on your machine, but a delivered note can quote what it reviewed, so the log may hold sensitive material from your work (paths, code, command output). Delete it when you're done with it.
 
 ### Why a completion, not a subagent or a fork
 
