@@ -1,0 +1,13 @@
+{
+  "name": "watchdog",
+  "owner": {
+    "name": "Chris Vaillancourt"
+  },
+  "plugins": [
+    {
+      "name": "watchdog",
+      "source": "./"
+    }
+  ],
+  "description": "A quiet background reviewer that reads each turn and raises severity-tagged notes to the main session."
+}
