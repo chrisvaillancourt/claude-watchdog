@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, ModelUsage, Register } from 'claude-code'
 
 import {
+  EVIDENCE_DOORS,
   INITIAL,
   NAME,
   SYSTEM,
@@ -318,10 +319,13 @@ export const register: Register = (on, options) => {
     return { text: statusText(config, await read($, sessionAtom), isInteractive) }
   })
 
-  on('session.append', async ($, e, next) => {
+  // Only the doors that carry evidence: the plugin's own rows (`note`), notices
+  // and injected context never were evidence, and a hook seated on the doors
+  // cc-plugin-sec-default skips is skipped and reported on every such row.
+  on('session.append', { door: EVIDENCE_DOORS }, async ($, e, next) => {
     const stored = await next(e)
-    // Main conversation only; the plugin's own rows and notices are not evidence.
-    if (e.agentId === undefined && e.door !== 'note' && e.door !== 'notice') {
+    // Main conversation only.
+    if (e.agentId === undefined) {
       try {
         await capture($, e.door, stored.message ?? e.message, e.origin as { kind: string; name?: string })
       } catch (err) {

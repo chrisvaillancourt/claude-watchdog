@@ -403,3 +403,72 @@ describe('watchdog: headless', () => {
     expect(w.submits).toHaveLength(0)
   })
 })
+
+/**
+ * A stand-in for Claude Code's built-in cc-plugin-sec-default, seated in the
+ * prepend tier (2.1.317): it sends rows on these doors past every user-tier
+ * hook (`next.to(e, 'builtin')`). An inline plugin loads on its own, so it
+ * records each link it skipped as a file, `/seat/<door>/<plugin>`.
+ */
+const SKIPPED_DOORS = ['attachment', 'hook-context', 'compaction'] as const
+const SEATED = [
+  {
+    name: 'sec-default-stand-in',
+    tier: 'prepend' as const,
+    register(on: On) {
+      on('session.append', { door: ['attachment', 'hook-context', 'compaction'] }, async ($, e, next) => {
+        const r = await next.to(e, 'builtin')
+        for (const t of next.trace) if (t.outcome === 'skipped') await $.fs.write(`/seat/${e.door}/${t.plugin}`, '')
+        return r
+      })
+    },
+  },
+  // A user-tier mod hooked on every door: shows the stand-in does skip links.
+  {
+    name: 'canary',
+    register(on: On) {
+      on('session.append', ($, e, next) => next(e))
+    },
+  },
+]
+const skippedBySeat = (files: Map<string, string>, plugin: string) =>
+  [...files.keys()].filter(k => k.startsWith('/seat/') && k.endsWith(`/${plugin}`)).map(k => k.split('/')[2]).sort()
+
+/** The rows the engine appends on the doors the seat skips, in one turn. */
+async function seatedRows($: any) {
+  await row($, 'hook-context', { type: 'attachment', name: 'hook_additional_context', content: [{ type: 'text', text: 'hook says hi' }] }, { kind: 'engine' })
+  await row($, 'attachment', { type: 'attachment', name: 'nested_memory', content: [{ type: 'text', text: 'memory text' }] }, { kind: 'engine' })
+  await row($, 'compaction', { type: 'user', role: 'user', isMeta: true, content: [{ type: 'text', text: 'summary of earlier work' }] }, { kind: 'engine' })
+}
+
+describe('watchdog: seated under cc-plugin-sec-default', () => {
+  test('its session.append hook is not seated on the doors the seat skips', { plugins: SEATED }, async ($, on) => {
+    const w = world(on)
+    await start($)
+    await run($, 'on')
+    await seatedRows($)
+    await turn($, 't1', 'write add() in add.py', 'Wrote add().', { tools: [WRITE] })
+    await w.clock.settle()
+    expect(skippedBySeat(w.files, 'canary')).toEqual([...SKIPPED_DOORS].sort())
+    expect(skippedBySeat(w.files, 'watchdog')).toEqual([])
+  })
+
+  test('seated, a turn is still reviewed from the same evidence and delivered', { plugins: SEATED }, async ($, on) => {
+    const w = world(on)
+    await start($)
+    await run($, 'on')
+    await seatedRows($)
+    await turn($, 't1', 'write add() in add.py', 'Wrote add().', { tools: [WRITE] })
+    await w.clock.settle()
+    expect(skippedBySeat(w.files, 'canary')).toEqual([...SKIPPED_DOORS].sort())
+    expect(w.asks).toHaveLength(1)
+    const ask = w.asks[0]!
+    expect(ask.prompt).toContain('write add() in add.py')
+    expect(ask.prompt).toContain('return a - b')
+    expect(ask.prompt).toContain('File created')
+    expect(ask.prompt).toContain('Wrote add().')
+    for (const text of ['hook says hi', 'memory text', 'summary of earlier work']) expect(ask.prompt).not.toContain(text)
+    expect(w.modelRows()).toHaveLength(1)
+    expect(w.submits).toEqual([WAKE_TEXT])
+  })
+})

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import {
+  EVIDENCE_DOORS,
   INITIAL,
   addEvidence,
   admit,
@@ -94,6 +95,27 @@ describe('evidence', () => {
     const msg = { type: 'user' as const, role: 'user' as const, content: [{ type: 'text' as const, text: 'fix the bug' }] }
     expect(evidenceFromRow('prompt', msg, { kind: 'composer' })).toEqual([{ kind: 'prompt', text: 'fix the bug' }])
     expect(evidenceFromRow('prompt', msg, { kind: 'plugin', name: 'watchdog' })).toEqual([{ kind: 'continuation' }])
+  })
+
+  test('only the evidence doors give evidence, so the hook needs no other door', async () => {
+    // Every SessionAppendDoor on 2.1.317. register.ts hooks session.append on
+    // EVIDENCE_DOORS alone, so a row on any other door must give nothing.
+    const doors = ['prompt', 'command', 'response', 'tool-result', 'tool-message', 'delivery', 'attachment', 'hook-context', 'note', 'compaction', 'notice', 'queue']
+    const msg = {
+      type: 'user' as const,
+      role: 'user' as const,
+      content: [
+        { type: 'text' as const, text: 'some text' },
+        { type: 'tool_use' as const, id: 'tu1', name: 'Bash', input: { command: 'ls' } },
+        { type: 'tool_result' as const, tool_use_id: 'tu1', content: 'a.txt' },
+      ],
+    }
+    expect([...EVIDENCE_DOORS].sort()).toEqual(['prompt', 'response', 'tool-result'])
+    for (const door of doors) {
+      const found = evidenceFromRow(door, msg, { kind: 'composer' })
+      if ((EVIDENCE_DOORS as readonly string[]).includes(door)) expect(found.length).toBeGreaterThan(0)
+      else expect(found).toEqual([])
+    }
   })
 
   test('response rows give tool uses only; prose is not captured', async () => {
