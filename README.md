@@ -83,8 +83,23 @@ Completions don't show up in Claude Code's session cost or `/cost`, so watchdog 
 - **Late notes aren't held for later.** A note about a turn you've already moved past is shown to you, not queued for the model's next turn. omp keeps such notes, marked with their age, for the agent's next turn; watchdog doesn't in v0.1.
 - **One review at a time.** A turn that ends while a review runs is folded into one follow-up review.
 - **The quarantine is a heuristic.** It catches the common forms of instruction overrides and destructive commands (`rm -rf`, `git reset --hard`, force pushes, `git clean -f`, `find -delete`, `mkfs`, `dd` onto a device, `DROP TABLE`), not every phrasing. A command counts as quoted only when the evidence holds the same command word for word, read up to a backtick, newline or shell separator outside quotes; a note that runs prose on after a quoted command without backticks is quarantined, and so is one that respells a command (other quotes, reordered flags) or quotes one run through a wrapper such as `sh -c '…'`, even when the agent ran exactly that, which errs on the safe side.
-- **Another plugin can hide rows from it.** A plugin seated above watchdog can send a row past watchdog's hook (the debug log says `session.append bypassed by <plugin>`); that row isn't part of the evidence.
+- **A plugin seated above it can hide rows from it.** A plugin in a tier above watchdog's can send a row past watchdog's hook (the debug log says `watchdog: session.append bypassed by <plugin>`); that row isn't part of the evidence. Claude Code's own `cc-plugin-sec-default` does this only on doors watchdog doesn't read; see [Team, Enterprise and managed environments](#team-enterprise-and-managed-environments).
 - **Severity is the reviewer's opinion.** A `blocker` tag doesn't make a note right. The wake message asks the agent to weigh the note against the evidence.
+
+## Team, Enterprise and managed environments
+
+Claude Code (2.1.316 and later) ships a built-in plugin, `cc-plugin-sec-default@builtin`. It doesn't appear in `claude plugin list`. It's seated ahead of every mod you install when the account is a Team or Enterprise organization, when the machine has managed settings or a managed MCP file, or when the organization's managed `prependPlugins` lists it. It keeps the organization's classic hooks, prompt content, settings and tool policy out of reach of user mods, so it sends some events on past them and their hooks never run: every `classic.*` event, `session.compact`, the prompt-building events (`prompt.section`, `prompt.context`, `prompt.attachment`, `prompt.compose`, `skill.prompt`), `attribution.text`, `settings.read`, and `session.append` rows on the doors `attachment`, `hook-context` and `compaction` (plus `note` rows from managed-tier plugins and some `tool-message` rows from the `Skill` tool).
+
+**What it skips of watchdog's: nothing.** watchdog hooks `session.start`, `session.end`, `command.run`, `turn.start`, `turn.complete` and `session.append`. Only `session.append` is on the list, and watchdog hooks it on the three doors its evidence comes from: `prompt` (your request), `response` (the tool calls) and `tool-result` (their results). The final answer comes from `turn.complete`. The doors the built-in skips carry context the engine injects (memory files, hook output, a compaction summary, a message queued while a turn runs) and other plugins' rows, none of which watchdog ever used as evidence, seated or not. So when it's seated, everything in [Behavior](#behavior) works the same: the reviewer gets the same evidence, notes reach the model as a hidden message, nits reach you, and the wake turn starts. Delivery goes through `$.session.append` and `$.prompt.submit`, which the built-in doesn't skip for a user mod.
+
+Earlier builds of watchdog hooked `session.append` on every door. That lost no evidence, but the skips were reported: a `bypassed` line in the debug log and, for a mod loaded with `--plugin-dir`, a line in the transcript (`watchdog: its session.append hook was skipped. "cc-plugin-sec-default" runs first and sent the event on past it.`).
+
+**How to tell.** Run with `claude --debug-file <file>` and search the file:
+
+- `cc-plugin-sec-default@builtin seated outermost: <reason>` means it's seated (on a Team login the reason reads `the organization is team`).
+- `<plugin>: <event> bypassed by cc-plugin-sec-default (tier user); beneath runs` names each hook it skipped. There should be none for watchdog; if you see `watchdog: … bypassed`, please open an issue with the line.
+
+**Turning it off.** You can't from your own settings. An organization admin can, for the whole organization, by setting managed `prependPlugins` (server-managed settings, MDM or `managed-settings.json`) to a list that doesn't name `cc-plugin-sec-default`.
 
 ## Install
 

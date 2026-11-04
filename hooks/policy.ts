@@ -171,6 +171,15 @@ function textOf(content: unknown): string {
   return ''
 }
 
+/**
+ * The session.append doors that carry evidence; `evidenceFromRow` gives
+ * nothing for any other, so register.ts hooks these doors alone. A hook seated
+ * on every door is skipped, and reported, for the doors Claude Code's built-in
+ * cc-plugin-sec-default sends past user mods (`attachment`, `hook-context`,
+ * `compaction`, and some `note` and `tool-message` rows).
+ */
+export const EVIDENCE_DOORS = ['prompt', 'response', 'tool-result'] as const
+
 /** What a main-conversation row adds to the evidence. Prose and thinking are never captured. */
 export function evidenceFromRow(door: string, row: Row, origin: Origin): Capture[] {
   if (door === 'prompt') {
